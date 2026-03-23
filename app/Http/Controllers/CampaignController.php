@@ -7,7 +7,7 @@ use App\Http\Requests\StoreCampaignRequest;
 use App\Jobs\ProcessCampaignData;
 use App\Models\Campaign;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class CampaignController extends Controller
 {
@@ -28,42 +28,51 @@ class CampaignController extends Controller
     public function report(?Campaign $campaign = null): JsonResponse
     {
         if ($campaign) {
-            return response()->json($this->buildReport($campaign));
+            $data = Cache::remember("campaign_report_{$campaign->id}", 3600, fn () => $this->buildReport($campaign));
+            return response()->json($data);
         }
 
-        $campaigns = Campaign::with(['client', 'campaignData'])->get();
+        $data = Cache::remember('campaigns_report_all', 3600, function () {
+            return Campaign::with(['client', 'campaignData'])->get()
+                ->map(fn (Campaign $c) => $this->buildReport($c))
+                ->toArray();
+        });
 
-        return response()->json($campaigns->map(fn (Campaign $c) => $this->buildReport($c)));
+        return response()->json($data);
     }
 
     public function analytics(): JsonResponse
     {
-        $campaigns = Campaign::with(['client', 'campaignData'])->get();
+        $data = Cache::remember('campaigns_analytics', 3600, function () {
+            $campaigns = Campaign::with(['client', 'campaignData'])->get();
 
-        $report = $campaigns->map(function (Campaign $campaign) {
-            $data = $campaign->campaignData;
+            $report = $campaigns->map(function (Campaign $campaign) {
+                $data = $campaign->campaignData;
 
-            $customFieldCounts = $data
-                ->pluck('custom_fields')
-                ->filter()
-                ->flatMap(fn (array $fields) => array_keys($fields))
-                ->countBy()
-                ->toArray();
+                $customFieldCounts = $data
+                    ->pluck('custom_fields')
+                    ->filter()
+                    ->flatMap(fn (array $fields) => array_keys($fields))
+                    ->countBy()
+                    ->toArray();
+
+                return [
+                    'campaign_id' => $campaign->id,
+                    'campaign_name' => $campaign->name,
+                    'client_name' => $campaign->client->name,
+                    'total_recipients' => $data->count(),
+                    'custom_field_usage' => $customFieldCounts,
+                ];
+            });
 
             return [
-                'campaign_id' => $campaign->id,
-                'campaign_name' => $campaign->name,
-                'client_name' => $campaign->client->name,
-                'total_recipients' => $data->count(),
-                'custom_field_usage' => $customFieldCounts,
+                'total_campaigns' => $campaigns->count(),
+                'total_recipients' => $campaigns->sum(fn ($c) => $c->campaignData->count()),
+                'campaigns' => $report,
             ];
         });
 
-        return response()->json([
-            'total_campaigns' => $campaigns->count(),
-            'total_recipients' => $campaigns->sum(fn ($c) => $c->campaignData->count()),
-            'campaigns' => $report,
-        ]);
+        return response()->json($data);
     }
 
     private function buildReport(Campaign $campaign): array

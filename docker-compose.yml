@@ -8,6 +8,7 @@ services:
       - .:/var/www
     depends_on:
       - db
+      - redis
     networks:
       - video-campaign-manager
 
@@ -36,6 +37,14 @@ services:
       MYSQL_PASSWORD: secret
     volumes:
       - dbdata:/var/lib/mysql
+    networks:
+      - video-campaign-manager
+
+  redis:
+    image: redis:alpine
+    container_name: video-campaign-manager-redis
+    ports:
+      - "6382:6379"
     networks:
       - video-campaign-manager
 

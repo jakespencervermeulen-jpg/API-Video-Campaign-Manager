@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class ProcessCampaignData implements ShouldQueue
@@ -22,32 +23,40 @@ class ProcessCampaignData implements ShouldQueue
 
     public function handle(): void
     {
-        foreach ($this->data as $entry) {
-            $existing = CampaignData::where('campaign_id', $this->campaign->id)
-                ->where('user_id', $entry['user_id'])
-                ->first();
+        $incomingUserIds = collect($this->data)->pluck('user_id');
 
-            if ($existing) {
-                Log::warning('Duplicate campaign data detected', [
-                    'campaign_id' => $this->campaign->id,
-                    'user_id' => $entry['user_id'],
-                    'action' => 'updated',
-                ]);
+        $existingUserIds = CampaignData::where('campaign_id', $this->campaign->id)
+            ->whereIn('user_id', $incomingUserIds)
+            ->pluck('user_id')
+            ->toArray();
 
-                $existing->update([
-                    'video_url' => $entry['video_url'],
-                    'custom_fields' => $entry['custom_fields'] ?? null,
-                ]);
-
-                continue;
-            }
-
-            CampaignData::create([
+        foreach ($existingUserIds as $userId) {
+            Log::warning('Duplicate campaign data detected', [
                 'campaign_id' => $this->campaign->id,
-                'user_id' => $entry['user_id'],
-                'video_url' => $entry['video_url'],
-                'custom_fields' => $entry['custom_fields'] ?? null,
+                'user_id' => $userId,
+                'action' => 'updated',
             ]);
         }
+
+        $now = now();
+
+        $rows = collect($this->data)->map(fn ($entry) => [
+            'campaign_id' => $this->campaign->id,
+            'user_id' => $entry['user_id'],
+            'video_url' => $entry['video_url'],
+            'custom_fields' => json_encode($entry['custom_fields'] ?? null),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ])->toArray();
+
+        CampaignData::upsert(
+            $rows,
+            ['campaign_id', 'user_id'],
+            ['video_url', 'custom_fields', 'updated_at']
+        );
+
+        Cache::forget("campaign_report_{$this->campaign->id}");
+        Cache::forget('campaigns_report_all');
+        Cache::forget('campaigns_analytics');
     }
 }
