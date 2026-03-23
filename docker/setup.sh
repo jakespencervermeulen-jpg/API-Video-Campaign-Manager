@@ -43,7 +43,7 @@ spin "Generating application key" php artisan key:generate --quiet
 
 # Wait for DB
 printf "  ⠋ Waiting for database"
-while ! php -r "new PDO('mysql:host=db;port=3306;dbname=video-campaign-manager-db','laravel','secret');" 2>/dev/null; do
+while ! php -r "new PDO('mysql:host=db;port=3306;dbname=video_campaign_manager','laravel','secret');" 2>/dev/null; do
     for c in ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏; do
         printf "\r  %s Waiting for database" "$c"
         sleep 0.1
