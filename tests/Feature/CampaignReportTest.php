@@ -28,20 +28,13 @@ class CampaignReportTest extends TestCase
         ]);
     }
 
-    public function test_single_campaign_report(): void
+    public function test_single_campaign_report_includes_recipients(): void
     {
         CampaignData::create([
             'campaign_id' => $this->campaign->id,
             'user_id' => 'recipient-1',
             'video_url' => 'https://example.com/video1.mp4',
             'custom_fields' => ['first_name' => 'John', 'company' => 'Acme'],
-        ]);
-
-        CampaignData::create([
-            'campaign_id' => $this->campaign->id,
-            'user_id' => 'recipient-2',
-            'video_url' => 'https://example.com/video2.mp4',
-            'custom_fields' => ['first_name' => 'Jane'],
         ]);
 
         $response = $this->getJson("/api/campaigns/report/{$this->campaign->id}");
@@ -51,10 +44,14 @@ class CampaignReportTest extends TestCase
                 'campaign_id' => $this->campaign->id,
                 'campaign_name' => 'Test Campaign',
                 'client_name' => 'Test Client',
-                'start_date' => '2025-07-01',
-                'end_date' => '2025-08-01',
-                'total_recipients' => 2,
-                'unique_custom_fields' => ['first_name', 'company'],
+                'total_recipients' => 1,
+                'recipients' => [
+                    [
+                        'user_id' => 'recipient-1',
+                        'video_url' => 'https://example.com/video1.mp4',
+                        'custom_fields' => ['first_name' => 'John', 'company' => 'Acme'],
+                    ],
+                ],
             ]);
     }
 
@@ -65,13 +62,13 @@ class CampaignReportTest extends TestCase
         $response->assertStatus(200)
             ->assertJson([
                 'total_recipients' => 0,
-                'unique_custom_fields' => [],
+                'recipients' => [],
             ]);
     }
 
     public function test_all_campaigns_report(): void
     {
-        $campaign2 = Campaign::create([
+        Campaign::create([
             'client_id' => $this->client->id,
             'name' => 'Second Campaign',
             'start_date' => '2025-09-01',
@@ -96,5 +93,54 @@ class CampaignReportTest extends TestCase
         $response = $this->getJson('/api/campaigns/report/999');
 
         $response->assertStatus(404);
+    }
+
+    public function test_analytics_returns_aggregated_data(): void
+    {
+        $campaign2 = Campaign::create([
+            'client_id' => $this->client->id,
+            'name' => 'Second Campaign',
+            'start_date' => '2025-09-01',
+        ]);
+
+        CampaignData::create([
+            'campaign_id' => $this->campaign->id,
+            'user_id' => 'recipient-1',
+            'video_url' => 'https://example.com/video1.mp4',
+            'custom_fields' => ['first_name' => 'John', 'company' => 'Acme'],
+        ]);
+
+        CampaignData::create([
+            'campaign_id' => $this->campaign->id,
+            'user_id' => 'recipient-2',
+            'video_url' => 'https://example.com/video2.mp4',
+            'custom_fields' => ['first_name' => 'Jane'],
+        ]);
+
+        CampaignData::create([
+            'campaign_id' => $campaign2->id,
+            'user_id' => 'recipient-3',
+            'video_url' => 'https://example.com/video3.mp4',
+        ]);
+
+        $response = $this->getJson('/api/campaigns/analytics');
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'total_campaigns' => 2,
+                'total_recipients' => 3,
+                'campaigns' => [
+                    [
+                        'campaign_name' => 'Test Campaign',
+                        'total_recipients' => 2,
+                        'custom_field_usage' => ['first_name' => 2, 'company' => 1],
+                    ],
+                    [
+                        'campaign_name' => 'Second Campaign',
+                        'total_recipients' => 1,
+                        'custom_field_usage' => [],
+                    ],
+                ],
+            ]);
     }
 }
