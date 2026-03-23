@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreCampaignDataRequest;
 use App\Http\Requests\StoreCampaignRequest;
+use App\Http\Resources\CampaignResource;
 use App\Jobs\ProcessCampaignData;
 use App\Models\Campaign;
 use Illuminate\Http\JsonResponse;
@@ -15,7 +16,9 @@ class CampaignController extends Controller
     {
         $campaign = Campaign::create($request->validated());
 
-        return response()->json($campaign, 201);
+        return (new CampaignResource($campaign))
+            ->response()
+            ->setStatusCode(201);
     }
 
     public function storeData(StoreCampaignDataRequest $request, Campaign $campaign): JsonResponse

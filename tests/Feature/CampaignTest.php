@@ -22,10 +22,10 @@ class CampaignTest extends TestCase
         ]);
 
         $response->assertStatus(201)
-            ->assertJson([
+            ->assertJson(['data' => [
                 'client_id' => $client->id,
                 'name' => 'Summer Campaign',
-            ]);
+            ]]);
 
         $this->assertDatabaseHas('campaigns', [
             'name' => 'Summer Campaign',
@@ -44,7 +44,7 @@ class CampaignTest extends TestCase
         ]);
 
         $response->assertStatus(201);
-        $this->assertNull($response->json('end_date'));
+        $this->assertNull($response->json('data.end_date'));
     }
 
     public function test_create_campaign_requires_fields(): void
